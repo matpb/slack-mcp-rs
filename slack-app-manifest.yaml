@@ -1,0 +1,24 @@
+display_information:
+  name: MCP Slack (user)
+  description: MCP server that lets an AI client use Slack as the installing user
+oauth_config:
+  scopes:
+    user:
+      - search:read
+      - channels:history
+      - groups:history
+      - im:history
+      - mpim:history
+      - channels:read
+      - groups:read
+      - im:read
+      - mpim:read
+      - im:write
+      - users:read
+      - chat:write
+      - files:read
+      - files:write
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
