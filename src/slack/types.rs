@@ -134,6 +134,17 @@ pub struct SendMessageParams {
     pub reply_broadcast: Option<bool>,
 }
 
+/// Parameters of `slack_add_reaction`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AddReactionParams {
+    /// Conversation ID such as `C0123456789`.
+    pub channel_id: String,
+    /// Timestamp of the message to react to.
+    pub ts: String,
+    /// Emoji name without colons, such as `thumbsup` or `+1`; skin tones as `thumbsup::skin-tone-2`.
+    pub name: String,
+}
+
 /// Parameters of `slack_upload_file`.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UploadFileParams {
@@ -230,6 +241,11 @@ pub fn shape_file(f: &Value) -> Value {
     json!({"id": f["id"], "name": f["name"], "mimetype": f["mimetype"], "size": f["size"]})
 }
 
+/// Compact reaction record: emoji name, total count and the user IDs Slack lists.
+pub fn shape_reaction(r: &Value) -> Value {
+    json!({"name": r["name"], "count": r["count"], "users": r["users"]})
+}
+
 /// Message with user IDs unresolved; the caller adds `user_name`.
 pub fn shape_message(m: &Value, user_name: Option<&str>) -> Value {
     let mut out = Map::new();
@@ -248,6 +264,12 @@ pub fn shape_message(m: &Value, user_name: Option<&str>) -> Value {
         out.insert(
             "files".into(),
             Value::Array(files.iter().map(shape_file).collect()),
+        );
+    }
+    if let Some(reactions) = m["reactions"].as_array().filter(|a| !a.is_empty()) {
+        out.insert(
+            "reactions".into(),
+            Value::Array(reactions.iter().map(shape_reaction).collect()),
         );
     }
     Value::Object(out)
@@ -281,5 +303,33 @@ mod tests {
         assert!(!valid_ts("1700000000"));
         assert!(!valid_ts("17.0a"));
         assert!(valid_ts_bound("0"));
+    }
+
+    #[test]
+    fn shape_message_keeps_reactions() {
+        let m = json!({
+            "ts": "1700000000.000100",
+            "text": "hi",
+            "reactions": [
+                {"name": "thumbsup", "count": 3, "users": ["U0123456789", "U0123456780"], "url": "x"},
+                {"name": "eyes", "count": 1, "users": ["U0123456789"]}
+            ]
+        });
+        let out = shape_message(&m, None);
+        assert_eq!(
+            out["reactions"],
+            json!([
+                {"name": "thumbsup", "count": 3, "users": ["U0123456789", "U0123456780"]},
+                {"name": "eyes", "count": 1, "users": ["U0123456789"]}
+            ])
+        );
+    }
+
+    #[test]
+    fn shape_message_omits_empty_reactions() {
+        let empty = json!({"ts": "1.1", "text": "hi", "reactions": []});
+        assert!(shape_message(&empty, None).get("reactions").is_none());
+        let absent = json!({"ts": "1.1", "text": "hi"});
+        assert!(shape_message(&absent, None).get("reactions").is_none());
     }
 }

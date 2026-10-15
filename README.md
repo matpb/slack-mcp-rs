@@ -12,9 +12,10 @@ A Model Context Protocol (MCP) server for Slack, written in Rust. It authenticat
 | Tool | Slack method | What it does |
 |---|---|---|
 | `slack_search` | `search.messages` | Search messages with Slack search syntax (`in:#general from:@alice after:2026-01-01`). |
-| `slack_read_channel` | `conversations.history` | Read recent messages of a channel, private channel, or DM. |
-| `slack_read_thread` | `conversations.replies` | Read a whole thread. |
+| `slack_read_channel` | `conversations.history` | Read recent messages of a channel, private channel, or DM. Messages include their `reactions` (name, count, user IDs). |
+| `slack_read_thread` | `conversations.replies` | Read a whole thread. Messages include their `reactions`. |
 | `slack_send_message` | `chat.postMessage` | Post or reply in a thread; a user ID opens a DM first. Text is sent as-is, with no signature. |
+| `slack_add_reaction` | `reactions.add` | Add an emoji reaction to a message. Reacting twice is not an error (`already_reacted: true`). |
 | `slack_upload_file` | `files.getUploadURLExternal`, `files.completeUploadExternal` | Upload a file from `SLACK_FILES_DIR`. |
 | `slack_download_file` | `files.info` | Download a Slack file into `SLACK_FILES_DIR`. Refuses to overwrite unless `overwrite=true` (marked destructive). |
 | `slack_read_user_profile` | `users.info` | Public profile fields (no email, no phone). |
@@ -64,6 +65,7 @@ Every Slack token belongs to an app. This manifest requests only **user** scopes
 | `im:write` | Open a DM when `slack_send_message` gets a user ID |
 | `users:read` | `slack_read_user_profile`, `slack_search_users`, name resolution |
 | `chat:write` | `slack_send_message` |
+| `reactions:write` | `slack_add_reaction` |
 | `files:read` | `slack_download_file` (without it Slack answers with an HTML login page and the tool says so) |
 | `files:write` | `slack_upload_file` |
 
@@ -146,7 +148,7 @@ Configuration comes **only from environment variables**. No `.env` file is ever 
 | `SLACK_FILES_DIR` | unset | Jail for upload and download. Must exist and be a directory. If unset, the two file tools return a "file tools disabled" error. |
 | `SLACK_MAX_FILE_BYTES` | `52428800` (50 MiB) | Cap for uploads and downloads. Downloads abort past the cap and delete the partial file. |
 | `SLACK_DOWNLOAD_HOSTS` | unset | Extra hosts that may receive the token and serve files (comma list), meant for tests. Plain `http` is accepted only for `localhost` and loopback IPs. |
-| `SLACK_READ_ONLY` | `false` | When `true`, `slack_send_message` and `slack_upload_file` are not registered. `slack_download_file` stays: it never posts to Slack, but it does write new files into `SLACK_FILES_DIR`, so it is not labelled read-only. |
+| `SLACK_READ_ONLY` | `false` | When `true`, `slack_send_message`, `slack_add_reaction` and `slack_upload_file` are not registered. `slack_download_file` stays: it never posts to Slack, but it does write new files into `SLACK_FILES_DIR`, so it is not labelled read-only. |
 | `MCP_HOST` | `127.0.0.1` | HTTP mode only. Must be an IP literal (`127.0.0.1`, `0.0.0.0`, `::1`), not a hostname. |
 | `MCP_PORT` | `8787` | HTTP mode only. |
 | `MCP_API_KEYS` | required in HTTP mode | Comma list; each key must be at least 32 characters (`openssl rand -hex 32`). `slack-mcp http` refuses to start otherwise. Ignored in stdio mode. |
@@ -181,7 +183,7 @@ For local use, **stdio is recommended**: the token never leaves the client's pro
 
 ## Read-only mode
 
-Set `SLACK_READ_ONLY=true` to leave out `slack_send_message` and `slack_upload_file`. Use it for unattended agents. `slack_download_file` remains available: it cannot post to Slack, but it writes new files into `SLACK_FILES_DIR` (never over existing ones unless `overwrite=true`).
+Set `SLACK_READ_ONLY=true` to leave out `slack_send_message`, `slack_add_reaction` and `slack_upload_file`. Use it for unattended agents. `slack_download_file` remains available: it cannot post to Slack, but it writes new files into `SLACK_FILES_DIR` (never over existing ones unless `overwrite=true`).
 
 ## Troubleshooting
 
@@ -215,7 +217,7 @@ cargo build --release
 SLACK_USER_TOKEN=xoxp-... SMOKE_CHANNEL_ID=C0123456789 scripts/smoke.sh
 ```
 
-Read-only steps always run. The write flow (post, reply, read the thread, upload, download and compare bytes) runs only when `SMOKE_POST_CHANNEL_ID` is set **and** `SMOKE_ALLOW_POST=1`. Use a personal test workspace for that, not a shared one. Other knobs: `SMOKE_CHANNEL_QUERY` (default `general`), `SMOKE_SEARCH_QUERY` (default `hello`), and `SLACK_MCP_BIN` (path to the binary, default `target/release/slack-mcp`). With `SLACK_READ_ONLY=true` the script expects 7 tools instead of 9.
+Read-only steps always run. The write flow (post, reply, read the thread, upload, download and compare bytes) runs only when `SMOKE_POST_CHANNEL_ID` is set **and** `SMOKE_ALLOW_POST=1`. Use a personal test workspace for that, not a shared one. Other knobs: `SMOKE_CHANNEL_QUERY` (default `general`), `SMOKE_SEARCH_QUERY` (default `hello`), and `SLACK_MCP_BIN` (path to the binary, default `target/release/slack-mcp`). With `SLACK_READ_ONLY=true` the script expects 7 tools instead of 10.
 
 ## Rate limits
 
@@ -223,7 +225,7 @@ Slack limits calls per method and tier. On HTTP 429 the client honours `Retry-Af
 
 ## Security
 
-Read [SECURITY.md](SECURITY.md). In short: the token is you, Slack content is untrusted input that can carry prompt injection, so require approval for posting and uploading, or run with `SLACK_READ_ONLY=true`.
+Read [SECURITY.md](SECURITY.md). In short: the token is you, Slack content is untrusted input that can carry prompt injection, so require approval for posting, uploading and reacting, or run with `SLACK_READ_ONLY=true`.
 
 ## License
 

@@ -239,7 +239,7 @@ impl SlackClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{header, method, path};
+    use wiremock::matchers::{body_string_contains, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     pub(crate) fn test_config(base: &str, extra: &[(&str, &str)]) -> Config {
@@ -393,5 +393,79 @@ mod tests {
             "{msg}"
         );
         assert!(!msg.contains("xoxp"));
+    }
+
+    fn reaction_params(name: &str) -> types::AddReactionParams {
+        types::AddReactionParams {
+            channel_id: "C0123456789".into(),
+            ts: "1700000000.000100".into(),
+            name: name.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn add_reaction_posts_form() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/reactions.add"))
+            .and(body_string_contains("channel=C0123456789"))
+            .and(body_string_contains("timestamp=1700000000.000100"))
+            .and(body_string_contains("name=thumbsup"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let c = SlackClient::new(&test_config(&server.uri(), &[])).expect("client");
+        let out = c
+            .add_reaction(reaction_params(":thumbsup:"))
+            .await
+            .expect("react");
+        assert_eq!(
+            out,
+            serde_json::json!({
+                "channel_id": "C0123456789",
+                "ts": "1700000000.000100",
+                "name": "thumbsup",
+                "already_reacted": false
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn add_reaction_already_reacted_is_ok() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/reactions.add"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"ok": false, "error": "already_reacted"})),
+            )
+            .mount(&server)
+            .await;
+        let c = SlackClient::new(&test_config(&server.uri(), &[])).expect("client");
+        let out = c
+            .add_reaction(reaction_params("thumbsup::skin-tone-2"))
+            .await
+            .expect("idempotent");
+        assert_eq!(out["already_reacted"], true);
+        assert_eq!(out["name"], "thumbsup::skin-tone-2");
+    }
+
+    #[tokio::test]
+    async fn add_reaction_rejects_bad_name() {
+        let server = MockServer::start().await;
+        let c = SlackClient::new(&test_config(&server.uri(), &[])).expect("client");
+        for bad in [
+            "thumbs up",
+            "",
+            ":::",
+            "a:b",
+            "x::skin-tone-9",
+            &"a".repeat(101),
+        ] {
+            let err = c.add_reaction(reaction_params(bad)).await.expect_err(bad);
+            assert!(matches!(err, SlackError::Invalid(_)), "{bad}: {err}");
+        }
+        assert!(server.received_requests().await.expect("reqs").is_empty());
     }
 }

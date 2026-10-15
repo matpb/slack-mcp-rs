@@ -16,6 +16,7 @@ oauth_config:
       - im:write
       - users:read
       - chat:write
+      - reactions:write
       - files:read
       - files:write
 settings:

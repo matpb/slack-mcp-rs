@@ -17,7 +17,7 @@ export SLACK_FILES_DIR="$FILES_DIR"
 
 case "${SLACK_READ_ONLY:-}" in
   1 | true | TRUE | True | yes | on) EXPECTED_TOOLS=7 ;;
-  *) EXPECTED_TOOLS=9 ;;
+  *) EXPECTED_TOOLS=10 ;;
 esac
 
 FAILS=0

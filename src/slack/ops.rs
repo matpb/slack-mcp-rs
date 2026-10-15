@@ -8,6 +8,39 @@ use super::{SlackClient, SlackError};
 const MAX_TEXT_CHARS: usize = 40_000;
 const SCAN_PAGES: usize = 10;
 
+/// Trims, strips one pair of colons and checks the emoji name (optional `::skin-tone-2..6`).
+fn normalize_emoji_name(raw: &str) -> Result<String, SlackError> {
+    let t = raw.trim();
+    let t = t.strip_prefix(':').unwrap_or(t);
+    let name = t.strip_suffix(':').unwrap_or(t);
+    let (base, tone) = match name.split_once("::") {
+        Some((b, tone)) => (b, Some(tone)),
+        None => (name, None),
+    };
+    require(!name.is_empty(), "name must not be empty")?;
+    require(
+        name.chars().count() <= 100,
+        "name is longer than 100 characters",
+    )?;
+    require(
+        !base.is_empty()
+            && base
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-' | '\'')),
+        "name must be an emoji name such as thumbsup or +1, without spaces or colons",
+    )?;
+    if let Some(tone) = tone {
+        require(
+            matches!(
+                tone,
+                "skin-tone-2" | "skin-tone-3" | "skin-tone-4" | "skin-tone-5" | "skin-tone-6"
+            ),
+            "skin tone suffix must be ::skin-tone-2 to ::skin-tone-6",
+        )?;
+    }
+    Ok(name.to_string())
+}
+
 impl SlackClient {
     async fn shape_messages(&self, msgs: &[Value]) -> Vec<Value> {
         let mut out = Vec::with_capacity(msgs.len());
@@ -182,6 +215,37 @@ impl SlackClient {
             .ok()
             .and_then(|v| v["permalink"].as_str().map(str::to_string));
         Ok(json!({"channel_id": channel_id, "ts": ts, "permalink": permalink}))
+    }
+
+    /// `reactions.add`; already_reacted counts as success.
+    pub async fn add_reaction(&self, p: AddReactionParams) -> Result<Value, SlackError> {
+        require(
+            valid_conversation_id(&p.channel_id),
+            "channel_id must look like C0123456789",
+        )?;
+        require(valid_ts(&p.ts), "ts must look like 1700000000.000100")?;
+        let name = normalize_emoji_name(&p.name)?;
+        let result = self
+            .call_form(
+                "reactions.add",
+                &[
+                    ("channel", p.channel_id.clone()),
+                    ("timestamp", p.ts.clone()),
+                    ("name", name.clone()),
+                ],
+            )
+            .await;
+        let already_reacted = match result {
+            Ok(_) => false,
+            Err(SlackError::Api { error, .. }) if error == "already_reacted" => true,
+            Err(e) => return Err(e),
+        };
+        Ok(json!({
+            "channel_id": p.channel_id,
+            "ts": p.ts,
+            "name": name,
+            "already_reacted": already_reacted,
+        }))
     }
 
     /// `users.info`.

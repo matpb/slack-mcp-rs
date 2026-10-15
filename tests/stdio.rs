@@ -5,11 +5,12 @@ use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const TOOLS: [&str; 9] = [
+const TOOLS: [&str; 10] = [
     "slack_search",
     "slack_read_channel",
     "slack_read_thread",
     "slack_send_message",
+    "slack_add_reaction",
     "slack_upload_file",
     "slack_download_file",
     "slack_read_user_profile",
@@ -123,6 +124,7 @@ fn stdio_read_only_hides_write_tools() {
     let names = tool_names(&s.request("tools/list", json!({})));
     assert_eq!(names.len(), 7);
     assert!(!names.contains(&"slack_send_message".to_string()));
+    assert!(!names.contains(&"slack_add_reaction".to_string()));
     assert!(!names.contains(&"slack_upload_file".to_string()));
     assert!(names.contains(&"slack_download_file".to_string()));
 }

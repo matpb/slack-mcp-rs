@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Reactions in `slack_read_channel` and `slack_read_thread` output: each message carries `reactions` with `name`, `count` and `users` (omitted when there are none).
+- `slack_add_reaction` (`reactions.add`) adds an emoji reaction as the user and treats `already_reacted` as success. Needs the `reactions:write` user scope, so reinstall the app after adding it.
+
 ## [0.1.0] - 2026-09-29
 
 Initial release.
