@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- rmcp 3.5 to 3.11. The server now answers `resources/list`, `resources/templates/list` and `prompts/list` with "method not found" (-32601) instead of an empty list, since it never advertised those capabilities. Tool names and schemas are unchanged.
+
+### Security
+
+- `cargo update` within semver clears every `cargo audit` advisory (rmcp RUSTSEC-2026-0457, -0461, -0462; rustls, rustls-webpki, webpki-roots, quinn-proto, quinn-udp and url advisories).
+
 ### Added
 
 - Reactions in `slack_read_channel` and `slack_read_thread` output: each message carries `reactions` with `name`, `count` and `users` (omitted when there are none).
